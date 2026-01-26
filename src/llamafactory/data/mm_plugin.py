@@ -22,8 +22,8 @@ import re
 from copy import deepcopy
 from dataclasses import dataclass
 from io import BytesIO
-from typing import TYPE_CHECKING, BinaryIO, Literal, NotRequired, Optional, TypedDict, Union
-
+from typing import TYPE_CHECKING, BinaryIO, Literal, Optional, TypedDict, Union
+from typing_extensions import NotRequired
 import numpy as np
 import torch
 import torchaudio
