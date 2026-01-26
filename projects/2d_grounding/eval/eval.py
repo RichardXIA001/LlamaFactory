@@ -254,7 +254,8 @@ def parse_args(config: Dict) -> Any:
     # enable hf mirror
     parser.add_argument("--enable_hf_mirror", type=lambda x: str(x).lower() in ["true", "1", "yes"], default=config.get("enable_hf_mirror", False))
     parser.add_argument("--hf_token", default=config.get("hf_token", None))
-    
+    parser.add_argument("--lora_path", default=config.get("lora_path", None))
+    parser.add_argument("--is_lora", type=lambda x: str(x).lower() in ["true", "1", "yes"], default=config.get("is_lora", False))
     return parser.parse_args()
 
 
@@ -276,7 +277,13 @@ if __name__ == "__main__":
     # Load model
     print(f"\nLoading model: {args.model_name}")
     model, processor, device = load_local_qwen3vl_model(
-        args.model_name, args.device, "auto", args.use_modelscope, args.enable_hf_mirror, args.hf_token
+        model_name=args.model_name,
+        lora_path=args.lora_path,
+        is_lora=args.is_lora,
+        device=args.device,
+        model_scope=args.use_modelscope,
+        enable_hf_mirror=args.enable_hf_mirror,
+        hf_token=args.hf_token
     )
     print(f"Model loaded on {device}")
 
