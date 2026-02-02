@@ -104,7 +104,7 @@ def evaluate_detection_results(
     
     Returns:
         Dict with keys: map, precision, recall, mean_iou, num_images,
-        predictions, ground_truths, image_names
+        predictions, ground_truths, image_names, responses
     """
     prompt = prompt or (
         "Locate every instance that belongs to the following categories: 'objects'. "
@@ -171,10 +171,14 @@ def evaluate_detection_results(
         from eval.metrics import compute_map
         metrics = compute_map(all_predictions, all_ground_truths, iou_threshold, True, False)
 
+    # Build responses dict: image_name -> response
+    responses_dict = {name: resp for name, resp in zip(image_names, responses)}
+
     metrics.update({
         "predictions": all_predictions,
         "ground_truths": all_ground_truths,
-        "image_names": image_names
+        "image_names": image_names,
+        "responses": responses_dict  # Added responses to metrics
     })
 
     return metrics
@@ -192,12 +196,25 @@ def load_config_from_yaml(config_path: str) -> Dict[str, Any]:
             return yaml.safe_load(f)
 
 
-def save_results(output_dir: Path, metrics: Dict, args) -> None:
+def save_results(output_dir: Path, metrics: Dict, args, coco_metrics: Dict = None) -> None:
     """Save evaluation results to JSON files."""
     output_dir.mkdir(parents=True, exist_ok=True)
     
     # Save summary metrics
-    metrics_to_save = {k: metrics[k] for k in ["num_images", "map", "precision", "recall", "mean_iou"]}
+    # Use COCO-style mAP@[0.5:0.95] as the primary mAP metric if available
+    if coco_metrics:
+        metrics_to_save = {
+            "num_images": metrics["num_images"],
+            "map": coco_metrics["map"],  # mAP@[0.5:0.95]
+            "map_50": coco_metrics["map_50"],  # mAP@0.5
+            "map_75": coco_metrics["map_75"],  # mAP@0.75
+            "precision": metrics["precision"],
+            "recall": metrics["recall"],
+            "mean_iou": metrics["mean_iou"]
+        }
+    else:
+        metrics_to_save = {k: metrics[k] for k in ["num_images", "map", "precision", "recall", "mean_iou"]}
+    
     metrics_to_save.update({
         "iou_threshold": args.iou_threshold,
         "box_only": args.box_only
@@ -223,7 +240,14 @@ def save_results(output_dir: Path, metrics: Dict, args) -> None:
     with open(output_dir / "detailed_results.json", "w") as f:
         json.dump(detailed, f, indent=2)
     
+    # Save original responses
+    with open(output_dir / "responses.json", "w", encoding="utf-8") as f:
+        json.dump(metrics["responses"], f, indent=2, ensure_ascii=False)
+    
     print(f"\nResults saved to: {output_dir}")
+    print(f"  - metrics.json")
+    print(f"  - detailed_results.json")
+    print(f"  - responses.json")
 
 
 def parse_args(config: Dict) -> Any:
@@ -322,7 +346,7 @@ if __name__ == "__main__":
     print("Evaluation Results")
     print("=" * 70)
     print(f"Number of images: {metrics['num_images']}")
-    print(f"mAP (box-only): {metrics['map']:.4f}")
+    print(f"mAP@{args.iou_threshold} (box-only): {metrics['map']:.4f}")
     print(f"Precision: {metrics['precision']:.4f}")
     print(f"Recall: {metrics['recall']:.4f}")
     print(f"Mean IoU: {metrics['mean_iou']:.4f}")
@@ -340,7 +364,7 @@ if __name__ == "__main__":
 
     # Save results
     if args.output_dir:
-        save_results(Path(args.output_dir), metrics, args)
+        save_results(Path(args.output_dir), metrics, args, coco_metrics)
 
     print("\n" + "=" * 70)
     print("Evaluation completed!")
