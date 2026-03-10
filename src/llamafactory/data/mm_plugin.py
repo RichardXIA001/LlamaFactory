@@ -161,7 +161,9 @@ class MMPluginMixin:
         video_processor: BaseImageProcessor = getattr(
             processor, "video_processor", getattr(processor, "image_processor", None)
         )
-        feature_extractor: SequenceFeatureExtractor = getattr(processor, "feature_extractor", None)
+        feature_extractor: SequenceFeatureExtractor = getattr(processor, "feature_extractor", None) or getattr(
+            processor, "audio_processor", None
+        )
         if len(images) != 0 and self.image_token is None:
             raise ValueError(
                 "This model does not support image input. Please check whether the correct `template` is used."
@@ -390,7 +392,9 @@ class MMPluginMixin:
                 mm_inputs.update(video_processor(videos, return_tensors="pt"))
 
         if len(audios) != 0:
-            feature_extractor: SequenceFeatureExtractor = getattr(processor, "feature_extractor", None)
+            feature_extractor: SequenceFeatureExtractor = getattr(processor, "feature_extractor", None) or getattr(
+                processor, "audio_processor", None
+            )
             audios = self._regularize_audios(
                 audios,
                 sampling_rate=getattr(processor, "audio_sampling_rate", 16000),
@@ -1876,7 +1880,9 @@ class Qwen2OmniPlugin(Qwen2VLPlugin):
     ) -> dict[str, "torch.Tensor"]:
         image_processor: BaseImageProcessor = getattr(processor, "image_processor", None)
         video_processor: BaseVideoProcessor = getattr(processor, "video_processor", None)
-        feature_extractor: SequenceFeatureExtractor = getattr(processor, "feature_extractor", None)
+        feature_extractor: SequenceFeatureExtractor = getattr(processor, "feature_extractor", None) or getattr(
+            processor, "audio_processor", None
+        )
         mm_inputs = {}
         if len(images) != 0:
             images = self._regularize_images(
@@ -2159,6 +2165,40 @@ class LFMVLPlugin(BasePlugin):
         return messages
 
 
+@dataclass
+class YoutuVLPlugin(BasePlugin):
+    r"""Plugin for Youtu-VL vision-language models."""
+
+    vision_bos_token: str = "<|vision_start|>"
+    vision_eos_token: str = "<|vision_end|>"
+
+    @override
+    def process_messages(
+        self,
+        messages: list[dict[str, str]],
+        images: list["ImageInput"],
+        videos: list["VideoInput"],
+        audios: list["AudioInput"],
+        processor: Optional["MMProcessor"],
+    ) -> list[dict[str, str]]:
+        self._validate_input(processor, images, videos, audios)
+        self._validate_messages(messages, images, videos, audios)
+        messages = deepcopy(messages)
+
+        for message in messages:
+            content = message["content"]
+            content = content.replace(
+                IMAGE_PLACEHOLDER, f"{self.vision_bos_token}{self.image_token}{self.vision_eos_token}"
+            )
+            content = content.replace(
+                VIDEO_PLACEHOLDER, f"{self.vision_bos_token}{self.video_token}{self.vision_eos_token}"
+            )
+
+            message["content"] = content
+
+        return messages
+
+
 PLUGINS = {
     "base": BasePlugin,
     "ernie_vl": ErnieVLPlugin,
@@ -2181,6 +2221,7 @@ PLUGINS = {
     "qwen2_vl": Qwen2VLPlugin,
     "qwen3_vl": Qwen3VLPlugin,
     "video_llava": VideoLlavaPlugin,
+    "youtu_vl": YoutuVLPlugin,
 }
 
 

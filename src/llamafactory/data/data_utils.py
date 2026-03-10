@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import json
-from enum import Enum, unique
+from enum import StrEnum, unique
 from typing import TYPE_CHECKING, Any, Optional, TypedDict, Union
 
 import fsspec
@@ -35,7 +35,7 @@ SLOTS = list[Union[str, set[str], dict[str, str]]]
 
 
 @unique
-class Role(str, Enum):
+class Role(StrEnum):
     USER = "user"
     ASSISTANT = "assistant"
     SYSTEM = "system"
@@ -196,7 +196,7 @@ def read_cloud_json(cloud_path: str) -> list[Any]:
 
     # filter out non-JSON files
     files = [x["Key"] for x in fs.listdir(cloud_path)] if fs.isdir(cloud_path) else [cloud_path]
-    files = filter(lambda file: file.endswith(".json") or file.endswith(".jsonl"), files)
+    files = list(filter(lambda file: file.endswith(".json") or file.endswith(".jsonl"), files))
     if not files:
         raise ValueError(f"No JSON/JSONL files found in the specified path: {cloud_path}.")
 
