@@ -45,4 +45,4 @@ repetition_penalty: 1.1  # Repetition penalty for generation
 # prompt: "Locate every instance that belongs to the following categories: 'objects'. Report bbox coordinates in JSON format."
 
 ### output (optional)
-output_dir: ./eval_results  # Directory to save evaluation results (metrics.json and detailed_results.json)
+output_dir: ./results/qwen3vl_4b_zeroshot_sku110k  # Directory to save evaluation results (metrics.json and detailed_results.json)

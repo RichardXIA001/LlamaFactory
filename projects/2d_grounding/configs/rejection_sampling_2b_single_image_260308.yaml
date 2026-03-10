@@ -1,0 +1,36 @@
+# Rejection Sampling — Single Image Test
+# Usage: python -m pipeline.rejection_sampling rft_test_single.yaml
+
+### model
+model_name: xingpeng001/qwenvl-direct-sft
+lora_path: null
+is_lora: false
+device: auto
+use_modelscope: false
+enable_hf_mirror: true
+hf_token: null
+
+### single-image test mode
+# Set test_image to run on just one image (comment out for full pipeline)
+test_image: /root/Codes/data/SKU110K_fixed/images/train_1731.jpg
+low_ap_json: /root/Codes/LlamaFactory/projects/2d_grounding/results/qwen3vl_2b_direct_full_sft_sku110k_train_img_1000/worst50_images_results.json
+
+### prompt
+prompt: "This is a retail shelf image. Detect and locate every individual product on the shelf, treating each separate item as a distinct object. Report bounding box coordinates for all items in JSON format."
+
+### inference
+max_new_tokens: 8192
+temperature: 0.7        # >0 enables sampling for trajectory diversity
+top_p: 0.9
+
+### rejection sampling
+n_trajectories: 4       # fewer for quick testing (use 8+ for full run)
+max_depth: 2
+overlap_ratio: 0.1
+iou_threshold: 0.7
+top_k: 3
+min_improvement: 0.1   # minimum AP gain over baseline to accept a trajectory
+min_ap_gain_for_split: 0.5  # minimum AP gain to label a node as "split"
+
+### output
+output_dir: ./results/rft/single_image_run_260308

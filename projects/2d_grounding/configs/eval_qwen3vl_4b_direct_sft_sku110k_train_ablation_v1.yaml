@@ -14,20 +14,20 @@
 
 ### model
 model_name: Qwen/Qwen3-VL-4B-Instruct
-lora_path: /root/Codes/LlamaFactory/saves/qwen3-vl-4b/lora/sft-sku_110k_20260126
+lora_path: /root/Codes/LlamaFactory/saves/qwen3-vl-4b/qlora/overfit10-sft-sku_110k_train_ablation_v1_20260201
 is_lora: true
 device: auto  # auto, cuda, cpu
 use_modelscope: true  # Use ModelScope for model loading (useful in China)
 enable_hf_mirror: true  # Enable Hugging Face mirror for model loading
 hf_token: None  # Hugging Face token for authentication (or set HF_TOKEN env var)
-num_gpus: -1
+
 ### dataset
 images_dir: /root/Codes/data/SKU110K_fixed/images
-annotations_csv: /root/Codes/data/SKU110K_fixed/annotations/annotations_test.csv
-image_prefix: test_  # Prefix for test images (e.g., 'test_' for test_0.jpg, test_1.jpg, ...)
+annotations_csv: /root/Codes/data/SKU110K_fixed/annotations/annotations_train.csv
+image_prefix: train_  # Prefix for test images (e.g., 'test_' for test_0.jpg, test_1.jpg, ...)
 # max_images: 2937  # Maximum number of images to evaluate (set to null or large number for full evaluation)
 
-max_images: 16  # Maximum number of images to evaluate (set to null or large number for full evaluation)
+max_images: 10  # Maximum number of images to evaluate (set to null or large number for full evaluation)
 
 
 prompt: "This is a retail shelf image. Detect and locate every individual product on the shelf, treating each separate item as a distinct object. Report bounding box coordinates for all items in JSON format."
@@ -37,7 +37,7 @@ box_only: true  # If true, ignore labels when matching boxes (recommended for SK
 batch_size: 2  # Batch size for inference
 
 ### inference
-max_new_tokens: 8192  # Maximum number of tokens to generate
+max_new_tokens: 4096  # Maximum number of tokens to generate
 do_sample: false  # Whether to use sampling during generation
 repetition_penalty: 1.1  # Repetition penalty for generation
 
@@ -46,4 +46,4 @@ repetition_penalty: 1.1  # Repetition penalty for generation
 # prompt: "Locate every instance that belongs to the following categories: 'objects'. Report bbox coordinates in JSON format."
 
 ### output (optional)
-output_dir: ./results/qwen3vl_4b_direct_sft_sku110k_20260126_img_120_fix_minmax  # Directory to save evaluation results (metrics.json and detailed_results.json)
+output_dir: ./eval_results_train_ablation_v1  # Directory to save evaluation results (metrics.json and detailed_results.json)

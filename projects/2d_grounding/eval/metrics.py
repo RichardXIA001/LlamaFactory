@@ -470,7 +470,6 @@ def compute_map_box_only(
         - 'num_images': Number of images evaluated
 
     Example:
-        >>> # For SKU110K dataset - only care about box detection, not categories
         >>> predictions = [
         ...     [{"x1": 10, "y1": 10, "x2": 50, "y2": 50, "label": "product"}],
         ...     [{"x1": 20, "y1": 20, "x2": 60, "y2": 60, "label": "item"}],
@@ -487,6 +486,124 @@ def compute_map_box_only(
     )
 
 
+def compute_coco_map_pycocotools(
+    all_predictions: List[List[Dict[str, Any]]],
+    all_ground_truths: List[List[Dict[str, Any]]],
+    image_sizes: Optional[Dict[str, Tuple[int, int]]] = None,
+    image_names: Optional[List[str]] = None,
+) -> Dict[str, float]:
+    """
+    Compute COCO-style mAP using the official pycocotools package.
+
+    This is significantly faster than the custom implementation and produces
+    the standard COCO metrics (mAP@[0.5:0.95], mAP@0.5, mAP@0.75, etc.).
+
+    Requires: pip install pycocotools
+
+    Args:
+        all_predictions: List of prediction lists per image. Each prediction is a dict
+                         with keys: x1, y1, x2, y2, label, and optionally score/confidence.
+        all_ground_truths: List of ground truth lists per image. Each GT is a dict
+                          with keys: x1, y1, x2, y2, label.
+        image_sizes: Optional dict mapping image_name -> (width, height).
+        image_names: Optional list of image names (used for image_sizes lookup).
+
+    Returns:
+        Dict with keys: map, map_50, map_75, map_small, map_medium, map_large,
+        mar_1, mar_10, mar_100.
+    """
+    from pycocotools.coco import COCO
+    from pycocotools.cocoeval import COCOeval
+
+    # Build COCO-format ground truth
+    gt_dict = {"images": [], "annotations": [], "categories": []}
+    dt_list = []
+
+    # Collect all unique category labels
+    all_labels = set()
+    for gts in all_ground_truths:
+        for gt in gts:
+            all_labels.add(gt.get("label", "object"))
+    for preds in all_predictions:
+        for pred in preds:
+            all_labels.add(pred.get("label", "object"))
+
+    # Create category mapping
+    label_to_id = {label: i + 1 for i, label in enumerate(sorted(all_labels))}
+    gt_dict["categories"] = [{"id": cid, "name": label} for label, cid in label_to_id.items()]
+
+    ann_id = 1
+    for img_idx, (preds, gts) in enumerate(zip(all_predictions, all_ground_truths)):
+        image_id = img_idx + 1
+
+        # Determine image size
+        w, h = 640, 480  # default fallback
+        if image_sizes and image_names and img_idx < len(image_names):
+            name = image_names[img_idx]
+            if name in image_sizes:
+                w, h = image_sizes[name]
+
+        gt_dict["images"].append({"id": image_id, "width": w, "height": h})
+
+        # Ground truth annotations
+        for gt in gts:
+            x1, y1, x2, y2 = gt["x1"], gt["y1"], gt["x2"], gt["y2"]
+            bbox_w, bbox_h = x2 - x1, y2 - y1
+            gt_dict["annotations"].append({
+                "id": ann_id,
+                "image_id": image_id,
+                "category_id": label_to_id[gt.get("label", "object")],
+                "bbox": [x1, y1, bbox_w, bbox_h],
+                "area": bbox_w * bbox_h,
+                "iscrowd": 0,
+            })
+            ann_id += 1
+
+        # Detections
+        for pred in preds:
+            x1, y1, x2, y2 = pred["x1"], pred["y1"], pred["x2"], pred["y2"]
+            bbox_w, bbox_h = x2 - x1, y2 - y1
+            dt_list.append({
+                "image_id": image_id,
+                "category_id": label_to_id[pred.get("label", "object")],
+                "bbox": [x1, y1, bbox_w, bbox_h],
+                "score": float(pred.get("score", pred.get("confidence", 1.0))),
+            })
+
+    # Handle edge case: no predictions
+    if not dt_list:
+        return {
+            "map": 0.0, "map_50": 0.0, "map_75": 0.0,
+            "map_small": 0.0, "map_medium": 0.0, "map_large": 0.0,
+            "mar_1": 0.0, "mar_10": 0.0, "mar_100": 0.0,
+        }
+
+    # Create COCO objects and run eval
+    coco_gt = COCO()
+    coco_gt.dataset = gt_dict
+    coco_gt.createIndex()
+
+    coco_dt = coco_gt.loadRes(dt_list)
+
+    coco_eval = COCOeval(coco_gt, coco_dt, "bbox")
+    coco_eval.evaluate()
+    coco_eval.accumulate()
+    coco_eval.summarize()
+
+    stats = coco_eval.stats
+    return {
+        "map": float(stats[0]),        # mAP@[0.5:0.95]
+        "map_50": float(stats[1]),      # mAP@0.5
+        "map_75": float(stats[2]),      # mAP@0.75
+        "map_small": float(stats[3]),   # mAP small objects
+        "map_medium": float(stats[4]),  # mAP medium objects
+        "map_large": float(stats[5]),   # mAP large objects
+        "mar_1": float(stats[6]),       # mAR maxDets=1
+        "mar_10": float(stats[7]),      # mAR maxDets=10
+        "mar_100": float(stats[8]),     # mAR maxDets=100
+    }
+
+
 def compute_map_at_iou_thresholds(
     all_predictions: List[List[Dict[str, Any]]],
     all_ground_truths: List[List[Dict[str, Any]]],
@@ -495,6 +612,9 @@ def compute_map_at_iou_thresholds(
 ) -> Dict[str, Any]:
     """
     Compute mAP at multiple IoU thresholds (COCO-style evaluation).
+
+    NOTE: For faster COCO-style evaluation, prefer compute_coco_map_pycocotools()
+    which uses the official pycocotools package.
 
     Args:
         all_predictions: List of predictions per image
@@ -536,8 +656,8 @@ def compute_map_box_only_at_iou_thresholds(
     """
     Compute mAP at multiple IoU thresholds for box-only evaluation (ignoring labels).
 
-    This is useful for datasets like SKU110K where you only care about box detection quality,
-    regardless of category classification.
+    NOTE: For faster COCO-style evaluation, prefer compute_coco_map_pycocotools()
+    which uses the official pycocotools package.
 
     Args:
         all_predictions: List of predictions per image (labels are ignored)
@@ -550,16 +670,11 @@ def compute_map_box_only_at_iou_thresholds(
         - 'map_50': mAP at IoU=0.5 (box-only)
         - 'map_75': mAP at IoU=0.75 (box-only)
         - 'map_per_threshold': Dictionary of mAP at each threshold (box-only)
-
-    Example:
-        >>> # For SKU110K - evaluate box detection quality across multiple IoU thresholds
-        >>> metrics = compute_map_box_only_at_iou_thresholds(predictions, ground_truths)
-        >>> print(f"mAP@[0.5:0.95]: {metrics['map']:.4f}")
-        >>> print(f"mAP@0.5: {metrics['map_50']:.4f}")
     """
     return compute_map_at_iou_thresholds(
         all_predictions, all_ground_truths, iou_thresholds=iou_thresholds, label_match=False
     )
+
 
 # **************************** Example Usage ****************************
 if __name__ == "__main__":
@@ -615,16 +730,15 @@ if __name__ == "__main__":
     # Example 3: Box-only evaluation (ignoring labels) - SKU110K style
     print("\n3. Box-Only Evaluation (Ignoring Labels) - SKU110K Style")
     print("-" * 70)
-    # Same boxes but with different labels - should still match based on IoU only
     pred_boxes_no_label = [
-        {"x1": 10, "y1": 10, "x2": 50, "y2": 50, "label": "product"},  # Will match gt[0]
-        {"x1": 60, "y1": 60, "x2": 100, "y2": 100, "label": "item"},  # Will match gt[1] (different label!)
-        {"x1": 200, "y1": 200, "x2": 250, "y2": 250, "label": "sku"},  # False positive
+        {"x1": 10, "y1": 10, "x2": 50, "y2": 50, "label": "product"},
+        {"x1": 60, "y1": 60, "x2": 100, "y2": 100, "label": "item"},
+        {"x1": 200, "y1": 200, "x2": 250, "y2": 250, "label": "sku"},
     ]
     gt_boxes_no_label = [
-        {"x1": 12, "y1": 12, "x2": 52, "y2": 52, "label": "object"},  # Different label but matches pred[0]
-        {"x1": 62, "y1": 62, "x2": 102, "y2": 102, "label": "product"},  # Different label but matches pred[1]
-        {"x1": 300, "y1": 300, "x2": 350, "y2": 350, "label": "item"},  # False negative
+        {"x1": 12, "y1": 12, "x2": 52, "y2": 52, "label": "object"},
+        {"x1": 62, "y1": 62, "x2": 102, "y2": 102, "label": "product"},
+        {"x1": 300, "y1": 300, "x2": 350, "y2": 350, "label": "item"},
     ]
 
     precision_box_only, recall_box_only, tp_box, fp_box, fn_box = compute_precision_recall(
@@ -632,11 +746,7 @@ if __name__ == "__main__":
     )
 
     print("Note: Labels are different but boxes match based on IoU only!")
-    print(f"Predictions: {len(pred_boxes_no_label)} boxes (with various labels)")
-    print(f"Ground Truth: {len(gt_boxes_no_label)} boxes (with different labels)")
-    print(f"\nTrue Positives: {tp_box}")
-    print(f"False Positives: {fp_box}")
-    print(f"False Negatives: {fn_box}")
+    print(f"True Positives: {tp_box}, False Positives: {fp_box}, False Negatives: {fn_box}")
     print(f"Precision (box-only): {precision_box_only:.4f}")
     print(f"Recall (box-only): {recall_box_only:.4f}")
 
@@ -644,55 +754,41 @@ if __name__ == "__main__":
     print("\n4. mAP Calculation (Multiple Images)")
     print("-" * 70)
     all_predictions = [
-        [  # Image 1
+        [
             {"x1": 10, "y1": 10, "x2": 50, "y2": 50, "label": "product"},
             {"x1": 60, "y1": 60, "x2": 100, "y2": 100, "label": "product"},
         ],
-        [  # Image 2
+        [
             {"x1": 20, "y1": 20, "x2": 60, "y2": 60, "label": "product"},
-            {"x1": 200, "y1": 200, "x2": 250, "y2": 250, "label": "product"},  # False positive
+            {"x1": 200, "y1": 200, "x2": 250, "y2": 250, "label": "product"},
         ],
     ]
     all_ground_truths = [
-        [  # Image 1
+        [
             {"x1": 12, "y1": 12, "x2": 52, "y2": 52, "label": "product"},
             {"x1": 62, "y1": 62, "x2": 102, "y2": 102, "label": "product"},
-            {"x1": 300, "y1": 300, "x2": 350, "y2": 350, "label": "product"},  # False negative
+            {"x1": 300, "y1": 300, "x2": 350, "y2": 350, "label": "product"},
         ],
-        [  # Image 2
+        [
             {"x1": 22, "y1": 22, "x2": 62, "y2": 62, "label": "product"},
         ],
     ]
 
-    # With label matching
-    metrics_with_labels = compute_map(
-        all_predictions, all_ground_truths, iou_threshold=0.5, label_match=True, per_class=False
-    )
-    print("With label matching:")
-    print(f"  mAP: {metrics_with_labels['map']:.4f}")
-    print(f"  Precision: {metrics_with_labels['precision']:.4f}")
-    print(f"  Recall: {metrics_with_labels['recall']:.4f}")
-    print(f"  Mean IoU: {metrics_with_labels['mean_iou']:.4f}")
-
-    # Box-only (ignoring labels)
     metrics_box_only = compute_map_box_only(all_predictions, all_ground_truths, iou_threshold=0.5)
-    print("\nBox-only (ignoring labels):")
-    print(f"  mAP: {metrics_box_only['map']:.4f}")
-    print(f"  Precision: {metrics_box_only['precision']:.4f}")
-    print(f"  Recall: {metrics_box_only['recall']:.4f}")
-    print(f"  Mean IoU: {metrics_box_only['mean_iou']:.4f}")
+    print(f"Box-only mAP: {metrics_box_only['map']:.4f}")
+    print(f"Precision: {metrics_box_only['precision']:.4f}")
+    print(f"Recall: {metrics_box_only['recall']:.4f}")
 
-    # Example 5: COCO-style mAP at multiple IoU thresholds
-    print("\n5. COCO-style mAP at Multiple IoU Thresholds (Box-Only)")
+    # Example 5: COCO-style mAP via pycocotools
+    print("\n5. COCO-style mAP (pycocotools)")
     print("-" * 70)
-    coco_metrics = compute_map_box_only_at_iou_thresholds(
-        all_predictions, all_ground_truths, iou_thresholds=[0.5, 0.75]
-    )
-    print("Box-only evaluation across IoU thresholds:")
-    print(f"  mAP@[0.5:0.95]: {coco_metrics['map']:.4f}")
-    print(f"  mAP@0.5: {coco_metrics['map_50']:.4f}")
-    print(f"  mAP@0.75: {coco_metrics['map_75']:.4f}")
-    print(f"  Per-threshold mAP: {coco_metrics['map_per_threshold']}")
+    try:
+        coco_metrics = compute_coco_map_pycocotools(all_predictions, all_ground_truths)
+        print(f"mAP@[0.5:0.95]: {coco_metrics['map']:.4f}")
+        print(f"mAP@0.5: {coco_metrics['map_50']:.4f}")
+        print(f"mAP@0.75: {coco_metrics['map_75']:.4f}")
+    except ImportError:
+        print("pycocotools not installed. Run: pip install pycocotools")
 
     print("\n" + "=" * 70)
     print("Example completed!")
