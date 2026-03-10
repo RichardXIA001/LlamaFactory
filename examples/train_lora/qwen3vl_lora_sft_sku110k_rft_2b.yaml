@@ -1,8 +1,13 @@
 ### model
-model_name_or_path: Qwen/Qwen3-VL-4B-Instruct
+model_name_or_path:  xingpeng001/qwenvl-direct-sft
 image_max_pixels: 262144
 video_max_pixels: 16384
 trust_remote_code: true
+
+### special tokens
+add_special_tokens: "<SPLIT>"
+resize_vocab: true
+# additional_target: "embed_tokens,lm_head"
 
 ### method
 stage: sft
@@ -13,7 +18,7 @@ lora_target: all
 flash_attn: fa2
 
 ### dataset
-dataset: sku_110k_train
+dataset: sku110k_rft_260309
 template: qwen3_vl_nothink
 cutoff_len: 8192
 max_samples: null
@@ -23,20 +28,20 @@ dataloader_num_workers: 4
 remove_unused_columns: false
 
 ### output
-output_dir: saves/qwen3-vl-4b/lora/sft-sku_110k_20260126
+output_dir: saves/qwen3-vl-2b/lora/sft-sku110k_rft_260309
 logging_steps: 10
 save_steps: 200
 plot_loss: true
 overwrite_output_dir: true
 save_only_model: false
 report_to: wandb  # choices: [none, wandb, tensorboard, swanlab, mlflow]
-run_name: qwen3-vl-4b-lora-sft-sku_110k-20260126
+run_name: qwen3-vl-2b-lora-sft-sku110k_rft_260309
 
 ### train
 per_device_train_batch_size: 1
 gradient_accumulation_steps: 8
 learning_rate: 1.0e-5
-num_train_epochs: 3.0
+num_train_epochs: 5.0
 lr_scheduler_type: cosine
 warmup_ratio: 0.1
 bf16: true
