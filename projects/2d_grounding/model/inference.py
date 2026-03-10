@@ -16,6 +16,8 @@ def inference_local_qwen3vl(
     max_pixels=9800 * 32 * 32,
     max_new_tokens=8192,
     do_sample=False,
+    temperature=1.0,
+    top_p=1.0,
     repetition_penalty=1.1,
     batch_size=8,
     verbose=True,
@@ -33,6 +35,9 @@ def inference_local_qwen3vl(
         max_pixels: Maximum image pixels (will downscale if larger)
         max_new_tokens: Maximum tokens to generate
         do_sample: Whether to use sampling
+        temperature: Sampling temperature (only used when do_sample=True).
+            Higher values produce more diverse outputs.
+        top_p: Nucleus sampling cutoff (only used when do_sample=True).
         repetition_penalty: Repetition penalty
         batch_size: Number of images to process at once (adjust based on GPU memory)
         verbose: Print progress
@@ -116,12 +121,16 @@ def inference_local_qwen3vl(
         
         # Generate
         with torch.no_grad():
-            generated_ids = model.generate(
+            generate_kwargs = dict(
                 **inputs,
                 max_new_tokens=max_new_tokens,
                 do_sample=do_sample,
                 repetition_penalty=repetition_penalty,
             )
+            if do_sample:
+                generate_kwargs["temperature"] = temperature
+                generate_kwargs["top_p"] = top_p
+            generated_ids = model.generate(**generate_kwargs)
         
         # Trim prompt tokens and decode
         input_len = inputs["input_ids"].shape[1]
